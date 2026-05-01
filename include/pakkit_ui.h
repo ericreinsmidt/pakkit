@@ -28,6 +28,17 @@
 #endif
 
 /* -----------------------------------------------------------------------
+ * Hint bar (minimal footer replacement)
+ * ----------------------------------------------------------------------- */
+
+typedef struct {
+    const char *button;
+    const char *label;
+} pakkit_hint;
+
+void pakkit_draw_hints(pakkit_hint *hints, int count);
+
+/* -----------------------------------------------------------------------
  * Menu component
  * ----------------------------------------------------------------------- */
 
@@ -104,16 +115,7 @@ typedef struct {
 
 void pakkit_detail_screen(pakkit_detail_opts *opts);
 
-/* -----------------------------------------------------------------------
- * Hint bar (minimal footer replacement)
- * ----------------------------------------------------------------------- */
 
-typedef struct {
-    const char *button;
-    const char *label;
-} pakkit_hint;
-
-void pakkit_draw_hints(pakkit_hint *hints, int count);
 
 /* -----------------------------------------------------------------------
  * Implementation
