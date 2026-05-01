@@ -343,7 +343,7 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
 
         /* List items */
         int list_top = y;
-        SDL_Rect clip = { 0, list_top, sw, list_area_h };
+        SDL_Rect clip = { 0, list_top - pad, sw, list_area_h + pad };
         SDL_RenderSetClipRect(ap__g.renderer, &clip);
 
         for (int i = scroll; i < count && i < scroll + visible; i++) {
