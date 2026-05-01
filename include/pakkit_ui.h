@@ -43,6 +43,48 @@ int pakkit_menu(const char *title, pakkit_menu_item *items, int count,
                 pakkit_menu_result *result);
 
 /* -----------------------------------------------------------------------
+ * List component
+ * ----------------------------------------------------------------------- */
+
+#ifndef PAKKIT_MAX_LIST_ITEMS
+#define PAKKIT_MAX_LIST_ITEMS 64
+#endif
+
+#ifndef PAKKIT_LIST_VISIBLE
+#define PAKKIT_LIST_VISIBLE 8
+#endif
+
+typedef enum {
+    PAKKIT_ACTION_SELECTED,
+    PAKKIT_ACTION_BACK,
+    PAKKIT_ACTION_SECONDARY,
+    PAKKIT_ACTION_TERTIARY,
+} pakkit_action;
+
+typedef struct {
+    const char *label;
+} pakkit_list_item;
+
+typedef struct {
+    const char      *title;
+    pakkit_hint     *hints;
+    int              hint_count;
+    ap_button        secondary_button;   /* AP_BTN_NONE to disable */
+    ap_button        tertiary_button;    /* AP_BTN_NONE to disable */
+} pakkit_list_opts;
+
+typedef struct {
+    int            selected_index;   /* -1 if cancelled */
+    pakkit_action  action;
+} pakkit_list_result;
+
+int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
+                pakkit_list_result *result);
+
+/* -----------------------------------------------------------------------
+ * Detail/About screen component
+ * ----------------------------------------------------------------------- */
+/* -----------------------------------------------------------------------
  * Detail/About screen component
  * ----------------------------------------------------------------------- */
 
@@ -201,6 +243,146 @@ int pakkit_menu(const char *title, pakkit_menu_item *items, int count,
     return (result->selected_index >= 0) ? AP_OK : AP_CANCELLED;
 }
 
+/* --- List --- */
+
+int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
+                pakkit_list_result *result) {
+    int cursor = 0;
+    int scroll = 0;
+    int running = 1;
+
+    result->selected_index = -1;
+    result->action = PAKKIT_ACTION_BACK;
+
+    while (running) {
+        ap_input_event ev;
+        while (ap_poll_input(&ev)) {
+            if (ev.pressed) {
+                switch (ev.button) {
+                    case AP_BTN_B:
+                        if (!ev.repeated) {
+                            result->selected_index = -1;
+                            result->action = PAKKIT_ACTION_BACK;
+                            running = 0;
+                        }
+                        break;
+                    case AP_BTN_A:
+                        if (!ev.repeated) {
+                            result->selected_index = cursor;
+                            result->action = PAKKIT_ACTION_SELECTED;
+                            running = 0;
+                        }
+                        break;
+                    case AP_BTN_UP:
+                        cursor--;
+                        if (cursor < 0) cursor = count - 1;
+                        break;
+                    case AP_BTN_DOWN:
+                        cursor++;
+                        if (cursor >= count) cursor = 0;
+                        break;
+                    default:
+                        /* Check secondary/tertiary */
+                        if (!ev.repeated && opts->secondary_button != AP_BTN_NONE
+                            && ev.button == opts->secondary_button) {
+                            result->selected_index = cursor;
+                            result->action = PAKKIT_ACTION_SECONDARY;
+                            running = 0;
+                        }
+                        if (!ev.repeated && opts->tertiary_button != AP_BTN_NONE
+                            && ev.button == opts->tertiary_button) {
+                            result->selected_index = cursor;
+                            result->action = PAKKIT_ACTION_TERTIARY;
+                            running = 0;
+                        }
+                        break;
+                }
+            }
+        }
+
+        /* Keep cursor visible */
+        int sw = ap_get_screen_width();
+        int sh = ap_get_screen_height();
+        int pad = AP_DS(5);
+
+        TTF_Font *font_med   = ap_get_font(AP_FONT_MEDIUM);
+        TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
+        TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
+
+        int item_h = TTF_FontHeight(font_small) + pad * 3;
+        int title_h = TTF_FontHeight(font_med) + pad * 3 + 1 + pad * 3;
+        int hint_h = TTF_FontHeight(font_tiny) + pad * 2;
+        int list_area_h = sh - title_h - hint_h - pad;
+        int visible = list_area_h / item_h;
+        if (visible < 1) visible = 1;
+
+        if (cursor < scroll) scroll = cursor;
+        if (cursor >= scroll + visible) scroll = cursor - visible + 1;
+
+        ap_clear_screen();
+        ap_draw_background();
+
+        ap_theme *theme = ap_get_theme();
+        ap_color text_color = theme->text;
+        ap_color hint_color = theme->hint;
+        ap_color highlight  = theme->highlight;
+        ap_color hl_text    = theme->highlighted_text;
+
+        /* Title */
+        int y = pad * 3;
+        if (opts->title) {
+            ap_draw_text(font_med, opts->title, pad * 3, y, hint_color);
+            y += TTF_FontHeight(font_med) + pad * 3;
+        }
+
+        /* Divider */
+        ap_draw_rect(pad * 3, y, sw - pad * 6, 1, hint_color);
+        y += pad * 3;
+
+        /* List items */
+        int list_top = y;
+        SDL_Rect clip = { 0, list_top, sw, list_area_h };
+        SDL_RenderSetClipRect(ap__g.renderer, &clip);
+
+        for (int i = scroll; i < count && i < scroll + visible; i++) {
+            int item_y = list_top + (i - scroll) * item_h;
+
+            if (i == cursor) {
+                ap_draw_pill(pad * 2, item_y - pad, sw - pad * 4, item_h, highlight);
+                ap_draw_text_ellipsized(font_small, items[i].label,
+                                        pad * 4, item_y, hl_text, sw - pad * 8);
+            } else {
+                ap_draw_text_ellipsized(font_small, items[i].label,
+                                        pad * 4, item_y, text_color, sw - pad * 8);
+            }
+        }
+
+        SDL_RenderSetClipRect(ap__g.renderer, NULL);
+
+        /* Scroll indicator */
+        if (count > visible) {
+            int bar_x = sw - pad * 2;
+            int bar_h = list_area_h;
+            int thumb_h = (visible * bar_h) / count;
+            if (thumb_h < pad * 2) thumb_h = pad * 2;
+            int thumb_y = list_top + (scroll * (bar_h - thumb_h)) / (count - visible);
+            ap_color bar_color = { hint_color.r, hint_color.g, hint_color.b, 80 };
+            ap_color thumb_color = { hint_color.r, hint_color.g, hint_color.b, 160 };
+            ap_draw_rect(bar_x, list_top, 3, bar_h, bar_color);
+            ap_draw_rect(bar_x, thumb_y, 3, thumb_h, thumb_color);
+        }
+
+        /* Hints */
+        if (opts->hints && opts->hint_count > 0)
+            pakkit_draw_hints(opts->hints, opts->hint_count);
+
+        ap_present();
+    }
+
+    return (result->action == PAKKIT_ACTION_SELECTED) ? AP_OK : AP_CANCELLED;
+}
+
+/* --- Detail screen --- */
 /* --- Detail screen --- */
 
 void pakkit_detail_screen(pakkit_detail_opts *opts) {
