@@ -440,56 +440,6 @@ void pakkit_message(const char *message, const char *button_label) {
     }
 }
 
-/* --- Detail screen --- */
-/* --- Message dialog --- */
-
-void pakkit_message(const char *message, const char *button_label) {
-    if (!button_label) button_label = "OK";
-    int running = 1;
-
-    while (running) {
-        ap_input_event ev;
-        while (ap_poll_input(&ev)) {
-            if (ev.pressed && !ev.repeated) {
-                if (ev.button == AP_BTN_A || ev.button == AP_BTN_B)
-                    running = 0;
-            }
-        }
-
-        ap_clear_screen();
-        ap_draw_background();
-
-        int sw = ap_get_screen_width();
-        int sh = ap_get_screen_height();
-        int pad = AP_DS(5);
-
-        TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
-        TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
-
-        ap_theme *theme = ap_get_theme();
-        ap_color text_color = theme->text;
-        ap_color hint_color = theme->hint;
-
-        /* Center message vertically and horizontally */
-        int max_w = sw - pad * 8;
-        int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
-        int msg_y = (sh - msg_h) / 2;
-        ap_draw_text_wrapped(font_small, message, pad * 4, msg_y, max_w,
-                             text_color, AP_ALIGN_CENTER);
-
-        /* Hint */
-        char hint_buf[64];
-        snprintf(hint_buf, sizeof(hint_buf), "A: %s", button_label);
-        int hint_w = ap_measure_text(font_tiny, hint_buf);
-        int hint_y = sh - TTF_FontHeight(font_tiny) - pad;
-        ap_draw_text(font_tiny, hint_buf, (sw - hint_w) / 2, hint_y, hint_color);
-
-        ap_present();
-    }
-}
-
-/* --- Detail screen --- */
-
 void pakkit_detail_screen(pakkit_detail_opts *opts) {
     int running = 1;
     int scroll_y = 0;
