@@ -224,11 +224,14 @@ int pakkit_menu(const char *title, pakkit_menu_item *items, int count,
         for (int i = 0; i < count; i++) {
             int item_y = y + i * item_h;
 
+            int pill_y = y + i * item_h;
+            int text_y = pill_y + (item_h - TTF_FontHeight(font_small)) / 2;
+
             if (i == cursor) {
-                ap_draw_pill(pad * 2, item_y - pad, sw - pad * 4, item_h, highlight);
-                ap_draw_text(font_small, items[i].label, pad * 4, item_y, hl_text);
+                ap_draw_pill(pad * 2, pill_y, sw - pad * 4, item_h, highlight);
+                ap_draw_text(font_small, items[i].label, pad * 4, text_y, hl_text);
             } else {
-                ap_draw_text(font_small, items[i].label, pad * 4, item_y, text_color);
+                ap_draw_text(font_small, items[i].label, pad * 4, text_y, text_color);
             }
         }
 
@@ -343,19 +346,21 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
 
         /* List items */
         int list_top = y;
-        SDL_Rect clip = { 0, list_top - pad, sw, list_area_h + pad };
+        SDL_Rect clip = { 0, list_top, sw, list_area_h };
         SDL_RenderSetClipRect(ap__g.renderer, &clip);
 
         for (int i = scroll; i < count && i < scroll + visible; i++) {
             int item_y = list_top + (i - scroll) * item_h;
 
+            int text_y = item_y + (item_h - TTF_FontHeight(font_small)) / 2;
+
             if (i == cursor) {
-                ap_draw_pill(pad * 2, item_y - pad, sw - pad * 4, item_h, highlight);
+                ap_draw_pill(pad * 2, item_y, sw - pad * 4, item_h, highlight);
                 ap_draw_text_ellipsized(font_small, items[i].label,
-                                        pad * 4, item_y, hl_text, sw - pad * 8);
+                                        pad * 4, text_y, hl_text, sw - pad * 8);
             } else {
                 ap_draw_text_ellipsized(font_small, items[i].label,
-                                        pad * 4, item_y, text_color, sw - pad * 8);
+                                        pad * 4, text_y, text_color, sw - pad * 8);
             }
         }
 
