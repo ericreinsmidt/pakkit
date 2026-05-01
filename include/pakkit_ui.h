@@ -427,7 +427,7 @@ void pakkit_message(const char *message, const char *button_label) {
         int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
         int msg_y = (sh - msg_h) / 2;
         ap_draw_text_wrapped(font_small, message, pad * 4, msg_y, max_w,
-                             text_color, AP_TEXT_ALIGN_CENTER);
+                             text_color, AP_ALIGN_CENTER);
 
         /* Hint */
         char hint_buf[64];
@@ -475,7 +475,7 @@ void pakkit_message(const char *message, const char *button_label) {
         int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
         int msg_y = (sh - msg_h) / 2;
         ap_draw_text_wrapped(font_small, message, pad * 4, msg_y, max_w,
-                             text_color, AP_TEXT_ALIGN_CENTER);
+                             text_color, AP_ALIGN_CENTER);
 
         /* Hint */
         char hint_buf[64];
