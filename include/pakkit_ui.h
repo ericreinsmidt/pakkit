@@ -222,8 +222,6 @@ int pakkit_menu(const char *title, pakkit_menu_item *items, int count,
         int item_h = TTF_FontHeight(font_small) + pad * 3;
 
         for (int i = 0; i < count; i++) {
-            int item_y = y + i * item_h;
-
             int pill_y = y + i * item_h;
             int text_y = pill_y + (item_h - TTF_FontHeight(font_small)) / 2;
 
