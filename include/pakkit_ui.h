@@ -651,7 +651,6 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
 
 /* --- Keyboard --- */
 
-/* Grid definitions */
 #define PAKKIT_KB_ROWS      4
 #define PAKKIT_KB_COLS_MAX  10
 
@@ -669,22 +668,22 @@ typedef struct {
 static const pakkit_kb_row pakkit__kb_lower[PAKKIT_KB_ROWS] = {
     {.keys = {"q","w","e","r","t","y","u","i","o","p"},.count = 10 },
     {.keys = {"a","s","d","f","g","h","j","k","l",""},.count = 9 },
-    {.keys = {"z","x","c","v","b","n","m",".","-",""},.count = 9 },
-    {.keys = {"@","_","Shift","Space","Sym","","","","",""},.count = 5 },
+    {.keys = {"z","x","c","v","b","n","m",".","-","@"},.count = 10 },
+    {.keys = {"Shift","Space","Sym","","","","","","",""},.count = 3 },
 };
 
 static const pakkit_kb_row pakkit__kb_upper[PAKKIT_KB_ROWS] = {
     {.keys = {"Q","W","E","R","T","Y","U","I","O","P"},.count = 10 },
     {.keys = {"A","S","D","F","G","H","J","K","L",""},.count = 9 },
-    {.keys = {"Z","X","C","V","B","N","M",".","-",""},.count = 9 },
-    {.keys = {"@","_","abc","Space","Sym","","","","",""},.count = 5 },
+    {.keys = {"Z","X","C","V","B","N","M",".","-","@"},.count = 10 },
+    {.keys = {"abc","Space","Sym","","","","","","",""},.count = 3 },
 };
 
 static const pakkit_kb_row pakkit__kb_symbols[PAKKIT_KB_ROWS] = {
     {.keys = {"1","2","3","4","5","6","7","8","9","0"},.count = 10 },
-    {.keys = {"!","@","#","$","%","^","&","*","(",")"},.count = 10 },
+    {.keys = {"!","#","$","%","^","&","*","(",")",""},.count = 9 },
     {.keys = {"-","_","=","+","/",":",";","'","\"","?"},.count = 10 },
-    {.keys = {".",",","~","`","abc","Space","","","",""},.count = 6 },
+    {.keys = {"~",",","abc","Space",".","!","","","",""},.count = 6 },
 };
 
 static const pakkit_kb_row *pakkit__kb_get_page(pakkit_kb_page page) {
@@ -695,65 +694,70 @@ static const pakkit_kb_row *pakkit__kb_get_page(pakkit_kb_page page) {
     }
 }
 
-/* Map a column index from one row to the nearest column in another row
-   based on pixel position, not index */
+/* Calculate pixel x-position and width for a key in a given row */
+static void pakkit__kb_key_geometry(const pakkit_kb_row *rows, int row, int col,
+                                     int sw, int pad, int key_gap,
+                                     int *out_x, int *out_w) {
+    int col_count = rows[row].count;
+    int avail_w = sw - pad * 4;
+    int total_gap = key_gap * (col_count - 1);
+    int content_w = avail_w - total_gap;
+
+    /* Count width units: Space=4, Shift/abc/Sym=2, others=1 */
+    int total_units = 0;
+    for (int c = 0; c < col_count; c++) {
+        const char *k = rows[row].keys[c];
+        if (k[0] == '\0') continue;
+        if (strcmp(k, "Space") == 0) total_units += 4;
+        else if (strcmp(k, "Shift") == 0 || strcmp(k, "abc") == 0 ||
+                 strcmp(k, "Sym") == 0) total_units += 2;
+        else total_units += 1;
+    }
+    if (total_units == 0) total_units = 1;
+
+    int unit_w = content_w / total_units;
+    int kx = pad * 2;
+
+    for (int c = 0; c < col_count; c++) {
+        const char *k = rows[row].keys[c];
+        if (k[0] == '\0') continue;
+
+        int kw;
+        if (strcmp(k, "Space") == 0) kw = unit_w * 4;
+        else if (strcmp(k, "Shift") == 0 || strcmp(k, "abc") == 0 ||
+                 strcmp(k, "Sym") == 0) kw = unit_w * 2;
+        else kw = unit_w;
+
+        /* Last visible key absorbs remaining pixels to prevent gaps */
+        int is_last = 1;
+        for (int nc = c + 1; nc < col_count; nc++) {
+            if (rows[row].keys[nc][0] != '\0') { is_last = 0; break; }
+        }
+        if (is_last) kw = (pad * 2 + avail_w) - kx;
+
+        if (c == col) { *out_x = kx; *out_w = kw; return; }
+        kx += kw + key_gap;
+    }
+    *out_x = pad * 2;
+    *out_w = unit_w;
+}
+
+/* Map a column from one row to the nearest column in another by pixel position */
 static int pakkit__kb_map_col(const pakkit_kb_row *from_rows, int from_row, int from_col,
                                const pakkit_kb_row *to_rows, int to_row,
                                int sw, int pad, int key_gap) {
-    /* Calculate pixel center of from key */
-    int avail_w = sw - pad * 4;
-    int from_count = from_rows[from_row].count;
-    int from_total_gap = key_gap * (from_count - 1);
-
-    /* Count special widths for from row */
-    int from_special = 0, from_normal = 0;
-    for (int c = 0; c < from_count; c++) {
-        const char *k = from_rows[from_row].keys[c];
-        if (strcmp(k, "Space") == 0) from_special += 3;
-        else if (strcmp(k, "Shift") == 0 || strcmp(k, "abc") == 0 || strcmp(k, "Sym") == 0)
-            from_special += 1;
-        else from_normal++;
-    }
-    int from_unit = (from_normal + from_special > 0) ? (avail_w - from_total_gap) / (from_normal + from_special) : 1;
-
-    int fx = pad * 2;
-    int from_cx = 0;
-    for (int c = 0; c < from_count; c++) {
-        const char *k = from_rows[from_row].keys[c];
-        int w;
-        if (strcmp(k, "Space") == 0) w = from_unit * 4;
-        else if (strcmp(k, "Shift") == 0 || strcmp(k, "abc") == 0 || strcmp(k, "Sym") == 0) w = from_unit * 2;
-        else w = from_unit;
-        if (c == from_col) { from_cx = fx + w / 2; break; }
-        fx += w + key_gap;
-    }
-
-    /* Find closest key in to row */
-    int to_count = to_rows[to_row].count;
-    int to_total_gap = key_gap * (to_count - 1);
-    int to_special = 0, to_normal = 0;
-    for (int c = 0; c < to_count; c++) {
-        const char *k = to_rows[to_row].keys[c];
-        if (strcmp(k, "Space") == 0) to_special += 3;
-        else if (strcmp(k, "Shift") == 0 || strcmp(k, "abc") == 0 || strcmp(k, "Sym") == 0)
-            to_special += 1;
-        else to_normal++;
-    }
-    int to_unit = (to_normal + to_special > 0) ? (avail_w - to_total_gap) / (to_normal + to_special) : 1;
+    int from_x, from_w;
+    pakkit__kb_key_geometry(from_rows, from_row, from_col, sw, pad, key_gap, &from_x, &from_w);
+    int from_cx = from_x + from_w / 2;
 
     int best_col = 0, best_dist = 999999;
-    int tx = pad * 2;
-    for (int c = 0; c < to_count; c++) {
-        const char *k = to_rows[to_row].keys[c];
-        if (k[0] == '\0') continue;
-        int w;
-        if (strcmp(k, "Space") == 0) w = to_unit * 4;
-        else if (strcmp(k, "Shift") == 0 || strcmp(k, "abc") == 0 || strcmp(k, "Sym") == 0) w = to_unit * 2;
-        else w = to_unit;
-        int cx = tx + w / 2;
-        int dist = abs(cx - from_cx);
+    for (int c = 0; c < to_rows[to_row].count; c++) {
+        if (to_rows[to_row].keys[c][0] == '\0') continue;
+        int to_x, to_w;
+        pakkit__kb_key_geometry(to_rows, to_row, c, sw, pad, key_gap, &to_x, &to_w);
+        int to_cx = to_x + to_w / 2;
+        int dist = abs(to_cx - from_cx);
         if (dist < best_dist) { best_dist = dist; best_col = c; }
-        tx += w + key_gap;
     }
     return best_col;
 }
@@ -777,7 +781,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
     while (running) {
         const pakkit_kb_row *rows = pakkit__kb_get_page(page);
 
-        /* We need layout metrics for column mapping during input */
         int sw = ap_get_screen_width();
         int pad = AP_DS(5);
         int key_gap = pad;
@@ -831,7 +834,14 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                         if (shortcut_col < 0) shortcut_col = opts->shortcut_count - 1;
                     } else {
                         cursor_col--;
-                        if (cursor_col < 0) cursor_col = rows[cursor_row].count - 1;
+                        /* Skip empty keys */
+                        while (cursor_col >= 0 && rows[cursor_row].keys[cursor_col][0] == '\0')
+                            cursor_col--;
+                        if (cursor_col < 0) {
+                            cursor_col = rows[cursor_row].count - 1;
+                            while (cursor_col > 0 && rows[cursor_row].keys[cursor_col][0] == '\0')
+                                cursor_col--;
+                        }
                     }
                     break;
                 case AP_BTN_RIGHT:
@@ -840,7 +850,13 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                         if (shortcut_col >= opts->shortcut_count) shortcut_col = 0;
                     } else {
                         cursor_col++;
-                        if (cursor_col >= rows[cursor_row].count) cursor_col = 0;
+                        /* Skip empty keys */
+                        while (cursor_col < rows[cursor_row].count &&
+                               rows[cursor_row].keys[cursor_col][0] == '\0')
+                            cursor_col++;
+                        if (cursor_col >= rows[cursor_row].count) {
+                            cursor_col = 0;
+                        }
                     }
                     break;
                 case AP_BTN_A:
@@ -861,10 +877,19 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                             }
                         } else if (strcmp(key, "Shift") == 0) {
                             page = PAKKIT_KB_PAGE_UPPER;
+                            rows = pakkit__kb_get_page(page);
+                            cursor_col = pakkit__kb_map_col(rows, cursor_row, cursor_col,
+                                                             rows, cursor_row, sw, pad, key_gap);
                         } else if (strcmp(key, "abc") == 0) {
                             page = PAKKIT_KB_PAGE_LOWER;
+                            rows = pakkit__kb_get_page(page);
+                            cursor_col = pakkit__kb_map_col(rows, cursor_row, cursor_col,
+                                                             rows, cursor_row, sw, pad, key_gap);
                         } else if (strcmp(key, "Sym") == 0) {
                             page = PAKKIT_KB_PAGE_SYMBOLS;
+                            rows = pakkit__kb_get_page(page);
+                            cursor_col = pakkit__kb_map_col(rows, cursor_row, cursor_col,
+                                                             rows, cursor_row, sw, pad, key_gap);
                         } else if (key[0] != '\0') {
                             int kl = (int)strlen(key);
                             if (text_len + kl < PAKKIT_KB_MAX_TEXT) {
@@ -893,6 +918,8 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
 
         if (cursor_row >= PAKKIT_KB_ROWS) cursor_row = PAKKIT_KB_ROWS - 1;
         if (cursor_col >= rows[cursor_row].count) cursor_col = rows[cursor_row].count - 1;
+        while (cursor_col > 0 && rows[cursor_row].keys[cursor_col][0] == '\0')
+            cursor_col--;
 
         /* --- Draw --- */
         ap_clear_screen();
@@ -958,36 +985,16 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
             int col_count = rows[r].count;
             if (col_count <= 0) continue;
 
-            int total_gap = key_gap * (col_count - 1);
-            int avail_w = sw - pad * 4;
-
-            int special_extra = 0, normal_count = 0;
-            for (int c = 0; c < col_count; c++) {
-                const char *key = rows[r].keys[c];
-                if (strcmp(key, "Space") == 0) special_extra += 3;
-                else if (strcmp(key, "Shift") == 0 || strcmp(key, "abc") == 0 ||
-                         strcmp(key, "Sym") == 0) special_extra += 1;
-                else normal_count++;
-            }
-
-            int unit_w = (normal_count + special_extra > 0)
-                ? (avail_w - total_gap) / (normal_count + special_extra)
-                : pad * 4;
-
-            int kx = pad * 2;
             int ky = y + r * row_h;
 
             for (int c = 0; c < col_count; c++) {
                 const char *key = rows[r].keys[c];
                 if (key[0] == '\0') continue;
 
-                int kw;
-                if (strcmp(key, "Space") == 0) kw = unit_w * 4;
-                else if (strcmp(key, "Shift") == 0 || strcmp(key, "abc") == 0 ||
-                         strcmp(key, "Sym") == 0) kw = unit_w * 2;
-                else kw = unit_w;
-
+                int kx, kw;
+                pakkit__kb_key_geometry(rows, r, c, sw, pad, key_gap, &kx, &kw);
                 int kh = row_h - key_gap;
+
                 int is_selected = (!shortcut_active && r == cursor_row && c == cursor_col);
 
                 if (is_selected) {
@@ -1002,8 +1009,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                     ap_draw_text(font_small, key, kx + (kw - tw) / 2,
                                  ky + (kh - TTF_FontHeight(font_small)) / 2, text_color);
                 }
-
-                kx += kw + key_gap;
             }
         }
 
