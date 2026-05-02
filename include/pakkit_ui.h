@@ -126,6 +126,31 @@ typedef struct {
 
 void pakkit_detail_screen(pakkit_detail_opts *opts);
 
+/* -----------------------------------------------------------------------
+ * Keyboard component
+ * ----------------------------------------------------------------------- */
+
+#ifndef PAKKIT_KB_MAX_TEXT
+#define PAKKIT_KB_MAX_TEXT 512
+#endif
+
+#ifndef PAKKIT_KB_MAX_SHORTCUTS
+#define PAKKIT_KB_MAX_SHORTCUTS 8
+#endif
+
+typedef struct {
+    char text[PAKKIT_KB_MAX_TEXT];
+} pakkit_keyboard_result;
+
+typedef struct {
+    const char  *prompt;          /* hint text shown above input field */
+    const char **shortcuts;       /* optional shortcut strings, NULL if none */
+    int          shortcut_count;  /* 0 if no shortcuts */
+} pakkit_keyboard_opts;
+
+int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
+                    pakkit_keyboard_result *result);
+
 
 
 /* -----------------------------------------------------------------------
@@ -622,6 +647,333 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
 
         ap_present();
     }
+}
+
+/* --- Keyboard --- */
+
+/* Grid definitions */
+#define PAKKIT_KB_ROWS      4
+#define PAKKIT_KB_COLS_MAX  10
+
+typedef enum {
+    PAKKIT_KB_PAGE_LOWER,
+    PAKKIT_KB_PAGE_UPPER,
+    PAKKIT_KB_PAGE_SYMBOLS,
+} pakkit_kb_page;
+
+/* Row data: each row has a string of keys and a count */
+typedef struct {
+    const char *keys[PAKKIT_KB_COLS_MAX];
+    int count;
+} pakkit_kb_row;
+
+static const pakkit_kb_row pakkit__kb_lower[PAKKIT_KB_ROWS] = {
+    {.keys = {"q","w","e","r","t","y","u","i","o","p"},.count = 10 },
+    {.keys = {"a","s","d","f","g","h","j","k","l",""},.count = 9 },
+    {.keys = {"z","x","c","v","b","n","m",".","-",""},.count = 9 },
+    {.keys = {"@","_","Shift","Space","Sym","","","","",""},.count = 5 },
+};
+
+static const pakkit_kb_row pakkit__kb_upper[PAKKIT_KB_ROWS] = {
+    {.keys = {"Q","W","E","R","T","Y","U","I","O","P"},.count = 10 },
+    {.keys = {"A","S","D","F","G","H","J","K","L",""},.count = 9 },
+    {.keys = {"Z","X","C","V","B","N","M",".","-",""},.count = 9 },
+    {.keys = {"@","_","abc","Space","Sym","","","","",""},.count = 5 },
+};
+
+static const pakkit_kb_row pakkit__kb_symbols[PAKKIT_KB_ROWS] = {
+    {.keys = {"1","2","3","4","5","6","7","8","9","0"},.count = 10 },
+    {.keys = {"!","@","#","$","%","^","&","*","(",")"},.count = 10 },
+    {.keys = {"-","_","=","+","/",":",";","'","\"","?"},.count = 10 },
+    {.keys = {".",",","~","`","abc","Space","","","",""},.count = 6 },
+};
+
+static const pakkit_kb_row *pakkit__kb_get_page(pakkit_kb_page page) {
+    switch (page) {
+        case PAKKIT_KB_PAGE_UPPER:   return pakkit__kb_upper;
+        case PAKKIT_KB_PAGE_SYMBOLS: return pakkit__kb_symbols;
+        default:                     return pakkit__kb_lower;
+    }
+}
+
+int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
+                    pakkit_keyboard_result *result) {
+    memset(result, 0, sizeof(*result));
+    if (initial_text)
+        strncpy(result->text, initial_text, PAKKIT_KB_MAX_TEXT - 1);
+
+    int text_len = (int)strlen(result->text);
+    int cursor_row = 0, cursor_col = 0;
+    int shortcut_active = 0;  /* 1 if cursor is in shortcut row */
+    int shortcut_col = 0;
+    pakkit_kb_page page = PAKKIT_KB_PAGE_LOWER;
+    int running = 1;
+    int confirmed = 0;
+
+    int has_shortcuts = (opts && opts->shortcuts && opts->shortcut_count > 0);
+
+    while (running) {
+        const pakkit_kb_row *rows = pakkit__kb_get_page(page);
+
+        ap_input_event ev;
+        while (ap_poll_input(&ev)) {
+            if (!ev.pressed) continue;
+
+            switch (ev.button) {
+                case AP_BTN_START:
+                    if (!ev.repeated) { confirmed = 1; running = 0; }
+                    break;
+                case AP_BTN_Y:
+                    if (!ev.repeated) { confirmed = 0; running = 0; }
+                    break;
+                case AP_BTN_B:
+                    /* Backspace */
+                    if (text_len > 0) {
+                        result->text[--text_len] = '\0';
+                    }
+                    break;
+                case AP_BTN_UP:
+                    if (shortcut_active) {
+                        /* Can't go above shortcuts */
+                    } else if (cursor_row == 0 && has_shortcuts) {
+                        shortcut_active = 1;
+                        if (shortcut_col >= opts->shortcut_count)
+                            shortcut_col = opts->shortcut_count - 1;
+                    } else if (cursor_row > 0) {
+                        cursor_row--;
+                        if (cursor_col >= rows[cursor_row].count)
+                            cursor_col = rows[cursor_row].count - 1;
+                    }
+                    break;
+                case AP_BTN_DOWN:
+                    if (shortcut_active) {
+                        shortcut_active = 0;
+                        cursor_row = 0;
+                        if (cursor_col >= rows[cursor_row].count)
+                            cursor_col = rows[cursor_row].count - 1;
+                    } else if (cursor_row < PAKKIT_KB_ROWS - 1) {
+                        cursor_row++;
+                        if (cursor_col >= rows[cursor_row].count)
+                            cursor_col = rows[cursor_row].count - 1;
+                    }
+                    break;
+                case AP_BTN_LEFT:
+                    if (shortcut_active) {
+                        shortcut_col--;
+                        if (shortcut_col < 0) shortcut_col = opts->shortcut_count - 1;
+                    } else {
+                        cursor_col--;
+                        if (cursor_col < 0) cursor_col = rows[cursor_row].count - 1;
+                    }
+                    break;
+                case AP_BTN_RIGHT:
+                    if (shortcut_active) {
+                        shortcut_col++;
+                        if (shortcut_col >= opts->shortcut_count) shortcut_col = 0;
+                    } else {
+                        cursor_col++;
+                        if (cursor_col >= rows[cursor_row].count) cursor_col = 0;
+                    }
+                    break;
+                case AP_BTN_A:
+                    if (ev.repeated) break;
+                    if (shortcut_active && has_shortcuts) {
+                        /* Append shortcut text */
+                        const char *sc = opts->shortcuts[shortcut_col];
+                        int sc_len = (int)strlen(sc);
+                        if (text_len + sc_len < PAKKIT_KB_MAX_TEXT) {
+                            strcat(result->text, sc);
+                            text_len += sc_len;
+                        }
+                    } else {
+                        const char *key = rows[cursor_row].keys[cursor_col];
+                        if (strcmp(key, "Space") == 0) {
+                            if (text_len + 1 < PAKKIT_KB_MAX_TEXT) {
+                                result->text[text_len++] = ' ';
+                                result->text[text_len] = '\0';
+                            }
+                        } else if (strcmp(key, "Shift") == 0) {
+                            page = PAKKIT_KB_PAGE_UPPER;
+                        } else if (strcmp(key, "abc") == 0) {
+                            page = PAKKIT_KB_PAGE_LOWER;
+                        } else if (strcmp(key, "Sym") == 0) {
+                            page = PAKKIT_KB_PAGE_SYMBOLS;
+                        } else if (key[0] != '\0') {
+                            int kl = (int)strlen(key);
+                            if (text_len + kl < PAKKIT_KB_MAX_TEXT) {
+                                strcat(result->text, key);
+                                text_len += kl;
+                            }
+                            /* Auto-return to lowercase after typing one uppercase letter */
+                            if (page == PAKKIT_KB_PAGE_UPPER && kl == 1)
+                                page = PAKKIT_KB_PAGE_LOWER;
+                        }
+                    }
+                    break;
+                case AP_BTN_L1:
+                    /* Toggle shift */
+                    if (page == PAKKIT_KB_PAGE_LOWER) page = PAKKIT_KB_PAGE_UPPER;
+                    else if (page == PAKKIT_KB_PAGE_UPPER) page = PAKKIT_KB_PAGE_LOWER;
+                    break;
+                case AP_BTN_R1:
+                    /* Toggle symbols */
+                    if (page == PAKKIT_KB_PAGE_SYMBOLS) page = PAKKIT_KB_PAGE_LOWER;
+                    else page = PAKKIT_KB_PAGE_SYMBOLS;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        /* Re-fetch page after possible changes */
+        rows = pakkit__kb_get_page(page);
+
+        /* Clamp cursor */
+        if (cursor_row >= PAKKIT_KB_ROWS) cursor_row = PAKKIT_KB_ROWS - 1;
+        if (cursor_col >= rows[cursor_row].count) cursor_col = rows[cursor_row].count - 1;
+
+        /* --- Draw --- */
+        ap_clear_screen();
+        ap_draw_background();
+
+        int sw = ap_get_screen_width();
+        int sh = ap_get_screen_height();
+        int pad = AP_DS(5);
+
+        TTF_Font *font_med   = ap_get_font(AP_FONT_MEDIUM);
+        TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
+        TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
+
+        ap_theme *theme = ap_get_theme();
+        ap_color text_color = theme->text;
+        ap_color hint_color = theme->hint;
+        ap_color highlight  = theme->highlight;
+        ap_color hl_text    = theme->highlighted_text;
+
+        int y = pad * 2;
+
+        /* Prompt */
+        if (opts && opts->prompt && opts->prompt[0]) {
+            ap_draw_text(font_tiny, opts->prompt, pad * 3, y, hint_color);
+            y += TTF_FontHeight(font_tiny) + pad;
+        }
+
+        /* Input field */
+        int field_h = TTF_FontHeight(font_med) + pad * 2;
+        ap_color field_bg = { hint_color.r, hint_color.g, hint_color.b, 40 };
+        ap_draw_rect(pad * 2, y, sw - pad * 4, field_h, field_bg);
+
+        /* Draw text with blinking cursor */
+        char display_text[PAKKIT_KB_MAX_TEXT + 2];
+        snprintf(display_text, sizeof(display_text), "%s|", result->text);
+        ap_draw_text_ellipsized(font_med, display_text,
+                                pad * 3, y + pad, text_color, sw - pad * 6);
+        y += field_h + pad * 2;
+
+        /* Shortcut row */
+        if (has_shortcuts) {
+            int sc_h = TTF_FontHeight(font_tiny) + pad * 2;
+            int sc_x = pad * 2;
+            for (int i = 0; i < opts->shortcut_count; i++) {
+                int sc_w = ap_measure_text(font_tiny, opts->shortcuts[i]) + pad * 3;
+                if (shortcut_active && i == shortcut_col) {
+                    ap_draw_pill(sc_x, y, sc_w, sc_h, highlight);
+                    ap_draw_text(font_tiny, opts->shortcuts[i],
+                                 sc_x + pad + pad / 2, y + pad, hl_text);
+                } else {
+                    ap_color sc_bg = { hint_color.r, hint_color.g, hint_color.b, 60 };
+                    ap_draw_pill(sc_x, y, sc_w, sc_h, sc_bg);
+                    ap_draw_text(font_tiny, opts->shortcuts[i],
+                                 sc_x + pad + pad / 2, y + pad, text_color);
+                }
+                sc_x += sc_w + pad;
+            }
+            y += sc_h + pad * 2;
+        }
+
+        /* Keyboard grid */
+        int grid_area_h = sh - y - TTF_FontHeight(font_tiny) - pad * 3;
+        int row_h = grid_area_h / PAKKIT_KB_ROWS;
+        int key_gap = pad;
+
+        for (int r = 0; r < PAKKIT_KB_ROWS; r++) {
+            int col_count = rows[r].count;
+            if (col_count <= 0) continue;
+
+            int total_gap = key_gap * (col_count - 1);
+            int avail_w = sw - pad * 4;
+
+            /* Calculate key widths — special keys get more space */
+            int key_widths[PAKKIT_KB_COLS_MAX];
+            int special_extra = 0;
+            int normal_count = 0;
+
+            for (int c = 0; c < col_count; c++) {
+                const char *key = rows[r].keys[c];
+                if (strcmp(key, "Space") == 0) {
+                    special_extra += 3; /* Space gets 4x normal width */
+                    key_widths[c] = -1; /* placeholder */
+                } else if (strcmp(key, "Shift") == 0 || strcmp(key, "abc") == 0 ||
+                           strcmp(key, "Sym") == 0) {
+                    special_extra += 1; /* These get 2x normal width */
+                    key_widths[c] = -2; /* placeholder */
+                } else {
+                    normal_count++;
+                    key_widths[c] = 0;
+                }
+            }
+
+            int normal_w = (normal_count + special_extra > 0)
+                ? (avail_w - total_gap) / (normal_count + special_extra)
+                : pad * 4;
+
+            for (int c = 0; c < col_count; c++) {
+                if (key_widths[c] == -1) key_widths[c] = normal_w * 4; /* Space */
+                else if (key_widths[c] == -2) key_widths[c] = normal_w * 2; /* Shift/abc/Sym */
+                else key_widths[c] = normal_w;
+            }
+
+            int kx = pad * 2;
+            int ky = y + r * row_h;
+
+            for (int c = 0; c < col_count; c++) {
+                const char *key = rows[r].keys[c];
+                if (key[0] == '\0') continue;
+
+                int kw = key_widths[c];
+                int kh = row_h - key_gap;
+
+                int is_selected = (!shortcut_active && r == cursor_row && c == cursor_col);
+
+                if (is_selected) {
+                    ap_draw_pill(kx, ky, kw, kh, highlight);
+                    int tw = ap_measure_text(font_small, key);
+                    ap_draw_text(font_small, key, kx + (kw - tw) / 2,
+                                 ky + (kh - TTF_FontHeight(font_small)) / 2, hl_text);
+                } else {
+                    ap_color key_bg = { hint_color.r, hint_color.g, hint_color.b, 40 };
+                    ap_draw_pill(kx, ky, kw, kh, key_bg);
+                    int tw = ap_measure_text(font_small, key);
+                    ap_draw_text(font_small, key, kx + (kw - tw) / 2,
+                                 ky + (kh - TTF_FontHeight(font_small)) / 2, text_color);
+                }
+
+                kx += kw + key_gap;
+            }
+        }
+
+        /* Hints */
+        pakkit_hint hints[] = {
+            {.button = "B",.label = "Delete" },
+            {.button = "Y",.label = "Cancel" },
+            {.button = "Start",.label = "Done" },
+        };
+        pakkit_draw_hints(hints, 3);
+
+        ap_present();
+    }
+
+    return confirmed ? AP_OK : AP_CANCELLED;
 }
 
 #endif /* PAKKIT_UI_IMPLEMENTATION */
