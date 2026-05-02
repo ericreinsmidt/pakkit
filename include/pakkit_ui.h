@@ -45,6 +45,13 @@ void pakkit_draw_hints(pakkit_hint *hints, int count);
 void pakkit_message(const char *message, const char *button_label);
 
 /* -----------------------------------------------------------------------
+ * Confirm dialog
+ * ----------------------------------------------------------------------- */
+
+int pakkit_confirm(const char *message, const char *confirm_label,
+                   const char *cancel_label);
+
+/* -----------------------------------------------------------------------
  * Menu component
  * ----------------------------------------------------------------------- */
 
@@ -88,6 +95,7 @@ typedef struct {
     int              hint_count;
     ap_button        secondary_button;   /* AP_BTN_NONE to disable */
     ap_button        tertiary_button;    /* AP_BTN_NONE to disable */
+    int              initial_index;      /* starting cursor position */
 } pakkit_list_opts;
 
 typedef struct {
@@ -98,9 +106,6 @@ typedef struct {
 int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
                 pakkit_list_result *result);
 
-/* -----------------------------------------------------------------------
- * Detail/About screen component
- * ----------------------------------------------------------------------- */
 /* -----------------------------------------------------------------------
  * Detail/About screen component
  * ----------------------------------------------------------------------- */
@@ -259,6 +264,11 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
     int cursor = 0;
     int scroll = 0;
     int running = 1;
+
+    /* Restore cursor position if requested */
+    if (opts->initial_index > 0 && opts->initial_index < count) {
+        cursor = opts->initial_index;
+    }
 
     result->selected_index = -1;
     result->action = PAKKIT_ACTION_BACK;
@@ -439,6 +449,63 @@ void pakkit_message(const char *message, const char *button_label) {
         ap_present();
     }
 }
+
+/* --- Confirm dialog --- */
+
+int pakkit_confirm(const char *message, const char *confirm_label,
+                   const char *cancel_label) {
+    if (!confirm_label) confirm_label = "Confirm";
+    if (!cancel_label) cancel_label = "Cancel";
+    int confirmed = 0;
+    int running = 1;
+
+    while (running) {
+        ap_input_event ev;
+        while (ap_poll_input(&ev)) {
+            if (ev.pressed && !ev.repeated) {
+                if (ev.button == AP_BTN_A) {
+                    confirmed = 1;
+                    running = 0;
+                } else if (ev.button == AP_BTN_B) {
+                    confirmed = 0;
+                    running = 0;
+                }
+            }
+        }
+
+        ap_clear_screen();
+        ap_draw_background();
+
+        int sw = ap_get_screen_width();
+        int sh = ap_get_screen_height();
+        int pad = AP_DS(5);
+
+        TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
+
+        ap_theme *theme = ap_get_theme();
+        ap_color text_color = theme->text;
+
+        /* Center message */
+        int max_w = sw - pad * 8;
+        int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
+        int msg_y = (sh - msg_h) / 2;
+        ap_draw_text_wrapped(font_small, message, pad * 4, msg_y, max_w,
+                             text_color, AP_ALIGN_CENTER);
+
+        /* Hints */
+        pakkit_hint hints[] = {
+            {.button = "B",.label = cancel_label },
+            {.button = "A",.label = confirm_label },
+        };
+        pakkit_draw_hints(hints, 2);
+
+        ap_present();
+    }
+
+    return confirmed;
+}
+
+/* --- Detail screen --- */
 
 void pakkit_detail_screen(pakkit_detail_opts *opts) {
     int running = 1;
