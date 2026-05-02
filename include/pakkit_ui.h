@@ -683,7 +683,7 @@ static const pakkit_kb_row pakkit__kb_symbols[PAKKIT_KB_ROWS] = {
     {.keys = {"1","2","3","4","5","6","7","8","9","0"},.count = 10 },
     {.keys = {"!","#","$","%","^","&","*","(",")",""},.count = 9 },
     {.keys = {"-","_","=","+","/",":",";","'","\"","?"},.count = 10 },
-    {.keys = {"~",",","abc","Space",".","!","","","",""},.count = 6 },
+    {.keys = {".","Space","abc","","","","","","",""},.count = 3 },
 };
 
 static const pakkit_kb_row *pakkit__kb_get_page(pakkit_kb_page page) {
