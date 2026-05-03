@@ -13,7 +13,6 @@
 #define PAKKIT_UI_H
 
 #include "apostrophe.h"
-#include "apostrophe_widgets.h"
 
 /* -----------------------------------------------------------------------
  * Configuration
@@ -37,6 +36,12 @@ typedef struct {
 } pakkit_hint;
 
 void pakkit_draw_hints(pakkit_hint *hints, int count);
+
+/* -----------------------------------------------------------------------
+ * Loading screen
+ * ----------------------------------------------------------------------- */
+
+void pakkit_loading(const char *message);
 
 /* -----------------------------------------------------------------------
  * Message dialog
@@ -188,6 +193,28 @@ void pakkit_draw_hints(pakkit_hint *hints, int count) {
         int w = ap_measure_text(font, buf);
         ap_draw_text(font, buf, sw - w - pad * 2, y, color);
     }
+}
+
+/* --- Loading screen --- */
+
+void pakkit_loading(const char *message) {
+    if (!message) message = "Loading...";
+
+    int sw = ap_get_screen_width();
+    int sh = ap_get_screen_height();
+    int pad = AP_DS(5);
+
+    TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
+    ap_color text_color = ap_get_theme()->text;
+
+    int max_w = sw - pad * 8;
+    int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
+
+    ap_clear_screen();
+    ap_draw_background();
+    ap_draw_text_wrapped(font_small, message, pad * 4, (sh - msg_h) / 2,
+                         max_w, text_color, AP_ALIGN_CENTER);
+    ap_present();
 }
 
 /* --- Menu --- */
@@ -694,7 +721,6 @@ static const pakkit_kb_row *pakkit__kb_get_page(pakkit_kb_page page) {
     }
 }
 
-/* Calculate pixel x-position and width for a key in a given row */
 static void pakkit__kb_key_geometry(const pakkit_kb_row *rows, int row, int col,
                                      int sw, int pad, int key_gap,
                                      int *out_x, int *out_w) {
@@ -703,7 +729,6 @@ static void pakkit__kb_key_geometry(const pakkit_kb_row *rows, int row, int col,
     int total_gap = key_gap * (col_count - 1);
     int content_w = avail_w - total_gap;
 
-    /* Count width units: Space=4, Shift/abc/Sym=2, others=1 */
     int total_units = 0;
     for (int c = 0; c < col_count; c++) {
         const char *k = rows[row].keys[c];
@@ -728,7 +753,6 @@ static void pakkit__kb_key_geometry(const pakkit_kb_row *rows, int row, int col,
                  strcmp(k, "Sym") == 0) kw = unit_w * 2;
         else kw = unit_w;
 
-        /* Last visible key absorbs remaining pixels to prevent gaps */
         int is_last = 1;
         for (int nc = c + 1; nc < col_count; nc++) {
             if (rows[row].keys[nc][0] != '\0') { is_last = 0; break; }
@@ -742,7 +766,6 @@ static void pakkit__kb_key_geometry(const pakkit_kb_row *rows, int row, int col,
     *out_w = unit_w;
 }
 
-/* Map a column from one row to the nearest column in another by pixel position */
 static int pakkit__kb_map_col(const pakkit_kb_row *from_rows, int from_row, int from_col,
                                const pakkit_kb_row *to_rows, int to_row,
                                int sw, int pad, int key_gap) {
@@ -803,7 +826,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                     break;
                 case AP_BTN_UP:
                     if (shortcut_active) {
-                        /* Already at top */
                     } else if (cursor_row == 0 && has_shortcuts) {
                         shortcut_active = 1;
                         if (shortcut_col >= opts->shortcut_count)
@@ -834,7 +856,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                         if (shortcut_col < 0) shortcut_col = opts->shortcut_count - 1;
                     } else {
                         cursor_col--;
-                        /* Skip empty keys */
                         while (cursor_col >= 0 && rows[cursor_row].keys[cursor_col][0] == '\0')
                             cursor_col--;
                         if (cursor_col < 0) {
@@ -850,7 +871,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                         if (shortcut_col >= opts->shortcut_count) shortcut_col = 0;
                     } else {
                         cursor_col++;
-                        /* Skip empty keys */
                         while (cursor_col < rows[cursor_row].count &&
                                rows[cursor_row].keys[cursor_col][0] == '\0')
                             cursor_col++;
