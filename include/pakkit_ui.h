@@ -248,7 +248,6 @@ void pakkit_progress(const char *message, int current, int total) {
     TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
 
     ap_theme *theme = ap_get_theme();
-    ap_color text_color = theme->text;
     ap_color hint_color = theme->hint;
     ap_color highlight  = theme->highlight;
 
