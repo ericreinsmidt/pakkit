@@ -44,6 +44,28 @@ void pakkit_draw_hints(pakkit_hint *hints, int count);
 void pakkit_loading(const char *message);
 
 /* -----------------------------------------------------------------------
+ * Progress bar
+ * ----------------------------------------------------------------------- */
+
+void pakkit_progress(const char *message, int current, int total);
+
+/* -----------------------------------------------------------------------
+ * Toggle (drawing primitive)
+ * ----------------------------------------------------------------------- */
+
+int pakkit_draw_toggle(int x, int y, int on);
+
+/* -----------------------------------------------------------------------
+ * Tabs (drawing primitive)
+ * ----------------------------------------------------------------------- */
+
+typedef struct {
+    const char *label;
+} pakkit_tab;
+
+int pakkit_draw_tabs(pakkit_tab *tabs, int count, int active);
+
+/* -----------------------------------------------------------------------
  * Message dialog
  * ----------------------------------------------------------------------- */
 
@@ -176,7 +198,6 @@ void pakkit_draw_hints(pakkit_hint *hints, int count) {
     ap_color color = ap_get_theme()->hint;
     int y = sh - TTF_FontHeight(font) - pad;
 
-    /* Left-aligned hints */
     int x = pad * 2;
     for (int i = 0; i < count - 1; i++) {
         char buf[64];
@@ -185,7 +206,6 @@ void pakkit_draw_hints(pakkit_hint *hints, int count) {
         x += w + pad * 3;
     }
 
-    /* Right-aligned last hint */
     if (count > 0) {
         char buf[64];
         snprintf(buf, sizeof(buf), "%s: %s",
@@ -215,6 +235,155 @@ void pakkit_loading(const char *message) {
     ap_draw_text_wrapped(font_small, message, pad * 4, (sh - msg_h) / 2,
                          max_w, text_color, AP_ALIGN_CENTER);
     ap_present();
+}
+
+/* --- Progress bar --- */
+
+void pakkit_progress(const char *message, int current, int total) {
+    int sw = ap_get_screen_width();
+    int sh = ap_get_screen_height();
+    int pad = AP_DS(5);
+
+    TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
+    TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
+
+    ap_theme *theme = ap_get_theme();
+    ap_color text_color = theme->text;
+    ap_color hint_color = theme->hint;
+    ap_color highlight  = theme->highlight;
+
+    ap_clear_screen();
+    ap_draw_background();
+
+    int center_y = sh / 2;
+
+    /* Message above bar */
+    if (message && message[0]) {
+        int max_w = sw - pad * 8;
+        int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
+        ap_draw_text_wrapped(font_small, message, pad * 4, center_y - msg_h - pad * 3,
+                             max_w, text_color, AP_ALIGN_CENTER);
+    }
+
+    /* Progress bar */
+    int bar_w = sw - pad * 12;
+    int bar_h = AP_DS(8);
+    int bar_x = (sw - bar_w) / 2;
+    int bar_y = center_y;
+
+    /* Background track */
+    ap_color track_color = { hint_color.r, hint_color.g, hint_color.b, 60 };
+    ap_draw_rect(bar_x, bar_y, bar_w, bar_h, track_color);
+
+    /* Fill */
+    if (total > 0 && current > 0) {
+        int fill_w = (current * bar_w) / total;
+        if (fill_w > bar_w) fill_w = bar_w;
+        ap_draw_rect(bar_x, bar_y, fill_w, bar_h, highlight);
+    }
+
+    /* Counter text below bar */
+    if (total > 0) {
+        char counter[32];
+        snprintf(counter, sizeof(counter), "%d / %d", current, total);
+        int counter_w = ap_measure_text(font_tiny, counter);
+        ap_draw_text(font_tiny, counter, (sw - counter_w) / 2,
+                     bar_y + bar_h + pad * 2, hint_color);
+    }
+
+    ap_present();
+}
+
+/* --- Toggle (drawing primitive) --- */
+
+int pakkit_draw_toggle(int x, int y, int on) {
+    int pad = AP_DS(5);
+    ap_theme *theme = ap_get_theme();
+    ap_color highlight = theme->highlight;
+    ap_color hint_color = theme->hint;
+
+    /* Toggle dimensions */
+    TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
+    int h = TTF_FontHeight(font_small);
+    int w = h * 2;
+    int knob_size = h - pad;
+    int knob_pad = pad / 2;
+
+    /* Track */
+    ap_color track_color;
+    if (on) {
+        track_color = highlight;
+    } else {
+        track_color = (ap_color){ hint_color.r, hint_color.g, hint_color.b, 80 };
+    }
+    ap_draw_pill(x, y, w, h, track_color);
+
+    /* Knob */
+    ap_color knob_color = {255, 255, 255, 255};
+    int knob_x;
+    if (on) {
+        knob_x = x + w - knob_size - knob_pad;
+    } else {
+        knob_x = x + knob_pad;
+    }
+    int knob_y = y + knob_pad;
+    ap_draw_circle(knob_x + knob_size / 2, knob_y + knob_size / 2,
+                   knob_size / 2, knob_color);
+
+    return w;
+}
+
+/* --- Tabs (drawing primitive) --- */
+
+int pakkit_draw_tabs(pakkit_tab *tabs, int count, int active) {
+    if (!tabs || count <= 0) return 0;
+
+    int sw = ap_get_screen_width();
+    int pad = AP_DS(5);
+
+    TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
+
+    ap_theme *theme = ap_get_theme();
+    ap_color text_color = theme->text;
+    ap_color hint_color = theme->hint;
+    ap_color highlight  = theme->highlight;
+    ap_color hl_text    = theme->highlighted_text;
+
+    int tab_h = TTF_FontHeight(font_small) + pad * 3;
+    int tab_y = pad;
+
+    /* Calculate tab widths — equal distribution */
+    int total_gap = pad * (count - 1);
+    int avail_w = sw - pad * 4;
+    int tab_w = (avail_w - total_gap) / count;
+
+    int tx = pad * 2;
+    for (int i = 0; i < count; i++) {
+        if (i == active) {
+            ap_draw_pill(tx, tab_y, tab_w, tab_h, highlight);
+            int label_w = ap_measure_text(font_small, tabs[i].label);
+            ap_draw_text(font_small, tabs[i].label,
+                         tx + (tab_w - label_w) / 2,
+                         tab_y + (tab_h - TTF_FontHeight(font_small)) / 2,
+                         hl_text);
+        } else {
+            ap_color tab_bg = { hint_color.r, hint_color.g, hint_color.b, 40 };
+            ap_draw_pill(tx, tab_y, tab_w, tab_h, tab_bg);
+            int label_w = ap_measure_text(font_small, tabs[i].label);
+            ap_draw_text(font_small, tabs[i].label,
+                         tx + (tab_w - label_w) / 2,
+                         tab_y + (tab_h - TTF_FontHeight(font_small)) / 2,
+                         hint_color);
+        }
+        tx += tab_w + pad;
+    }
+
+    /* Divider below tabs */
+    int divider_y = tab_y + tab_h + pad;
+    ap_draw_rect(pad * 3, divider_y, sw - pad * 6, 1, hint_color);
+
+    /* Return content start y */
+    return divider_y + pad * 2;
 }
 
 /* --- Menu --- */
@@ -272,16 +441,13 @@ int pakkit_menu(const char *title, pakkit_menu_item *items, int count,
         ap_color highlight  = theme->highlight;
         ap_color hl_text    = theme->highlighted_text;
 
-        /* Title */
         int y = pad * 3;
         ap_draw_text(font_med, title, pad * 3, y, hint_color);
         y += TTF_FontHeight(font_med) + pad * 3;
 
-        /* Divider */
         ap_draw_rect(pad * 3, y, sw - pad * 6, 1, hint_color);
         y += pad * 3;
 
-        /* Menu items */
         int item_h = TTF_FontHeight(font_small) + pad * 3;
 
         for (int i = 0; i < count; i++) {
@@ -296,7 +462,6 @@ int pakkit_menu(const char *title, pakkit_menu_item *items, int count,
             }
         }
 
-        /* Hints */
         pakkit_hint hints[] = {
             {.button = "B",.label = "Back" },
             {.button = "A",.label = "Select" },
@@ -317,7 +482,6 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
     int scroll = 0;
     int running = 1;
 
-    /* Restore cursor position if requested */
     if (opts->initial_index > 0 && opts->initial_index < count) {
         cursor = opts->initial_index;
     }
@@ -353,7 +517,6 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
                         if (cursor >= count) cursor = 0;
                         break;
                     default:
-                        /* Check secondary/tertiary */
                         if (!ev.repeated && opts->secondary_button != AP_BTN_NONE
                             && ev.button == opts->secondary_button) {
                             result->selected_index = cursor;
@@ -371,7 +534,6 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
             }
         }
 
-        /* Keep cursor visible */
         int sw = ap_get_screen_width();
         int sh = ap_get_screen_height();
         int pad = AP_DS(5);
@@ -399,25 +561,21 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
         ap_color highlight  = theme->highlight;
         ap_color hl_text    = theme->highlighted_text;
 
-        /* Title */
         int y = pad * 3;
         if (opts->title) {
             ap_draw_text(font_med, opts->title, pad * 3, y, hint_color);
             y += TTF_FontHeight(font_med) + pad * 3;
         }
 
-        /* Divider */
         ap_draw_rect(pad * 3, y, sw - pad * 6, 1, hint_color);
         y += pad * 3;
 
-        /* List items */
         int list_top = y;
         SDL_Rect clip = { 0, list_top, sw, list_area_h };
         SDL_RenderSetClipRect(ap__g.renderer, &clip);
 
         for (int i = scroll; i < count && i < scroll + visible; i++) {
             int item_y = list_top + (i - scroll) * item_h;
-
             int text_y = item_y + (item_h - TTF_FontHeight(font_small)) / 2;
 
             if (i == cursor) {
@@ -432,7 +590,6 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
 
         SDL_RenderSetClipRect(ap__g.renderer, NULL);
 
-        /* Scroll indicator */
         if (count > visible) {
             int bar_x = sw - pad * 2;
             int bar_h = list_area_h;
@@ -445,7 +602,6 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
             ap_draw_rect(bar_x, thumb_y, 3, thumb_h, thumb_color);
         }
 
-        /* Hints */
         if (opts->hints && opts->hint_count > 0)
             pakkit_draw_hints(opts->hints, opts->hint_count);
 
@@ -484,14 +640,12 @@ void pakkit_message(const char *message, const char *button_label) {
         ap_color text_color = theme->text;
         ap_color hint_color = theme->hint;
 
-        /* Center message vertically and horizontally */
         int max_w = sw - pad * 8;
         int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
         int msg_y = (sh - msg_h) / 2;
         ap_draw_text_wrapped(font_small, message, pad * 4, msg_y, max_w,
                              text_color, AP_ALIGN_CENTER);
 
-        /* Hint */
         char hint_buf[64];
         snprintf(hint_buf, sizeof(hint_buf), "A: %s", button_label);
         int hint_w = ap_measure_text(font_tiny, hint_buf);
@@ -537,14 +691,12 @@ int pakkit_confirm(const char *message, const char *confirm_label,
         ap_theme *theme = ap_get_theme();
         ap_color text_color = theme->text;
 
-        /* Center message */
         int max_w = sw - pad * 8;
         int msg_h = ap_measure_wrapped_text_height(font_small, message, max_w);
         int msg_y = (sh - msg_h) / 2;
         ap_draw_text_wrapped(font_small, message, pad * 4, msg_y, max_w,
                              text_color, AP_ALIGN_CENTER);
 
-        /* Hints */
         pakkit_hint hints[] = {
             {.button = "B",.label = cancel_label },
             {.button = "A",.label = confirm_label },
@@ -610,13 +762,11 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
 
         int y = content_top - scroll_y;
 
-        /* Title */
         if (opts->title) {
             ap_draw_text(font_large, opts->title, pad * 3, y, text_color);
             y += TTF_FontHeight(font_large) + pad;
         }
 
-        /* Subtitle */
         if (opts->subtitle) {
             ap_draw_text(font_small, opts->subtitle, pad * 3, y, hint_color);
             y += TTF_FontHeight(font_small) + pad * 3;
@@ -624,11 +774,9 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
             y += pad * 2;
         }
 
-        /* Divider */
         ap_draw_rect(pad * 3, y, sw - pad * 6, 1, hint_color);
         y += pad * 3;
 
-        /* Info pairs */
         if (opts->info && opts->info_count > 0) {
             int label_x = pad * 3;
             int value_x = pad * 3 + AP_DS(80);
@@ -641,13 +789,10 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
             }
 
             y += pad * 2;
-
-            /* Divider */
             ap_draw_rect(pad * 3, y, sw - pad * 6, 1, hint_color);
             y += pad * 3;
         }
 
-        /* Credits */
         if (opts->credits && opts->credit_count > 0) {
             int row_h = TTF_FontHeight(font_small) + pad;
             for (int i = 0; i < opts->credit_count; i++) {
@@ -658,7 +803,6 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
             y += pad * 2;
         }
 
-        /* Clamp scroll */
         int total_content = y + scroll_y - content_top;
         int max_scroll = total_content - content_h;
         if (max_scroll < 0) max_scroll = 0;
@@ -666,7 +810,6 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
 
         SDL_RenderSetClipRect(ap__g.renderer, NULL);
 
-        /* Hints */
         pakkit_hint hints[] = {
             {.button = "B",.label = "Back" },
         };
@@ -941,7 +1084,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
         while (cursor_col > 0 && rows[cursor_row].keys[cursor_col][0] == '\0')
             cursor_col--;
 
-        /* --- Draw --- */
         ap_clear_screen();
         ap_draw_background();
 
@@ -959,13 +1101,11 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
 
         int y = pad * 2;
 
-        /* Prompt */
         if (opts && opts->prompt && opts->prompt[0]) {
             ap_draw_text(font_tiny, opts->prompt, pad * 3, y, hint_color);
             y += TTF_FontHeight(font_tiny) + pad;
         }
 
-        /* Input field */
         int field_h = TTF_FontHeight(font_med) + pad * 2;
         ap_color field_bg = { hint_color.r, hint_color.g, hint_color.b, 40 };
         ap_draw_rect(pad * 2, y, sw - pad * 4, field_h, field_bg);
@@ -976,7 +1116,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
                                 pad * 3, y + pad, text_color, sw - pad * 6);
         y += field_h + pad * 2;
 
-        /* Shortcut row */
         if (has_shortcuts) {
             int sc_h = TTF_FontHeight(font_tiny) + pad * 2;
             int sc_x = pad * 2;
@@ -997,7 +1136,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
             y += sc_h + pad * 2;
         }
 
-        /* Keyboard grid */
         int grid_area_h = sh - y - TTF_FontHeight(font_tiny) - pad * 3;
         int row_h = grid_area_h / PAKKIT_KB_ROWS;
 
@@ -1032,7 +1170,6 @@ int pakkit_keyboard(const char *initial_text, pakkit_keyboard_opts *opts,
             }
         }
 
-        /* Hints */
         pakkit_hint hints[] = {
             {.button = "B",.label = "Delete" },
             {.button = "Y",.label = "Cancel" },
