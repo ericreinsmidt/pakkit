@@ -248,6 +248,7 @@ void pakkit_progress(const char *message, int current, int total) {
     TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
 
     ap_theme *theme = ap_get_theme();
+    ap_color text_color = theme->text;
     ap_color hint_color = theme->hint;
     ap_color highlight  = theme->highlight;
 
@@ -343,7 +344,6 @@ int pakkit_draw_tabs(pakkit_tab *tabs, int count, int active) {
     TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
 
     ap_theme *theme = ap_get_theme();
-    ap_color text_color = theme->text;
     ap_color hint_color = theme->hint;
     ap_color highlight  = theme->highlight;
     ap_color hl_text    = theme->highlighted_text;
