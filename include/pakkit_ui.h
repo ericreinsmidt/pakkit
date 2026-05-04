@@ -154,6 +154,18 @@ typedef struct {
 void pakkit_detail_screen(pakkit_detail_opts *opts);
 
 /* -----------------------------------------------------------------------
+ * Scroll helper
+ * ----------------------------------------------------------------------- */
+
+typedef struct {
+    int scroll_y;
+    int last_max_scroll;
+} pakkit_scroll_state;
+
+void pakkit_scroll_handle_input(pakkit_scroll_state *s, int direction, int step);
+void pakkit_scroll_update(pakkit_scroll_state *s, int content_height, int viewport_height);
+
+/* -----------------------------------------------------------------------
  * Keyboard component
  * ----------------------------------------------------------------------- */
 
@@ -708,11 +720,26 @@ int pakkit_confirm(const char *message, const char *confirm_label,
     return confirmed;
 }
 
+/* --- Scroll helper --- */
+
+void pakkit_scroll_handle_input(pakkit_scroll_state *s, int direction, int step) {
+    s->scroll_y += direction * step;
+    if (s->scroll_y < 0) s->scroll_y = 0;
+    if (s->scroll_y > s->last_max_scroll) s->scroll_y = s->last_max_scroll;
+}
+
+void pakkit_scroll_update(pakkit_scroll_state *s, int content_height, int viewport_height) {
+    int max_scroll = content_height - viewport_height;
+    if (max_scroll < 0) max_scroll = 0;
+    s->last_max_scroll = max_scroll;
+    if (s->scroll_y > s->last_max_scroll) s->scroll_y = s->last_max_scroll;
+}
+
 /* --- Detail screen --- */
 
 void pakkit_detail_screen(pakkit_detail_opts *opts) {
     int running = 1;
-    int scroll_y = 0;
+    pakkit_scroll_state scroll = {0};
 
     while (running) {
         ap_input_event ev;
@@ -723,11 +750,10 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
                         if (!ev.repeated) running = 0;
                         break;
                     case AP_BTN_UP:
-                        if (scroll_y > 0) scroll_y -= PAKKIT_SCROLL_STEP;
-                        if (scroll_y < 0) scroll_y = 0;
+                        pakkit_scroll_handle_input(&scroll, -1, PAKKIT_SCROLL_STEP);
                         break;
                     case AP_BTN_DOWN:
-                        scroll_y += PAKKIT_SCROLL_STEP;
+                        pakkit_scroll_handle_input(&scroll, 1, PAKKIT_SCROLL_STEP);
                         break;
                     default:
                         break;
@@ -759,7 +785,7 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
         SDL_Rect clip = { 0, content_top, sw, content_h };
         SDL_RenderSetClipRect(ap__g.renderer, &clip);
 
-        int y = content_top - scroll_y;
+        int y = content_top - scroll.scroll_y;
 
         if (opts->title) {
             ap_draw_text(font_large, opts->title, pad * 3, y, text_color);
@@ -802,12 +828,11 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
             y += pad * 2;
         }
 
-        int total_content = y + scroll_y - content_top;
-        int max_scroll = total_content - content_h;
-        if (max_scroll < 0) max_scroll = 0;
-        if (scroll_y > max_scroll) scroll_y = max_scroll;
+        int total_content = y + scroll.scroll_y - content_top;
 
         SDL_RenderSetClipRect(ap__g.renderer, NULL);
+
+        pakkit_scroll_update(&scroll, total_content, content_h);
 
         pakkit_hint hints[] = {
             {.button = "B",.label = "Back" },
