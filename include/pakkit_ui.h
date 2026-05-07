@@ -213,7 +213,10 @@ void pakkit_draw_hints(pakkit_hint *hints, int count) {
     int x = pad * 2;
     for (int i = 0; i < count - 1; i++) {
         char buf[64];
-        snprintf(buf, sizeof(buf), "%s: %s", hints[i].button, hints[i].label);
+        if (hints[i].label[0] == '\0')
+            snprintf(buf, sizeof(buf), "%s", hints[i].button);
+        else
+            snprintf(buf, sizeof(buf), "%s: %s", hints[i].button, hints[i].label);
         int w = ap_draw_text(font, buf, x, y, color);
         x += w + pad * 3;
     }
