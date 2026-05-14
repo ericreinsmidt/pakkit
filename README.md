@@ -82,6 +82,61 @@ Scrollable info/about screen with key-value pairs and credits.
 - Scrollable with Up/Down
 - B: Back
 
+### pakkit_scroll_state
+
+Smooth-scrolling helper for custom scrollable views. Handles input targeting, per-frame animation (ease-out lerp), and max-scroll clamping.
+
+    pakkit_scroll_state scroll = {0};
+
+    // In your input handler:
+    case AP_BTN_UP:
+        pakkit_scroll_handle_input(&scroll, -1, PAKKIT_SCROLL_STEP);
+        break;
+    case AP_BTN_DOWN:
+        pakkit_scroll_handle_input(&scroll, 1, PAKKIT_SCROLL_STEP);
+        break;
+
+    // Each frame, before rendering:
+    pakkit_scroll_animate(&scroll);
+
+    // Offset your content:
+    int y = content_top - scroll.scroll_y;
+
+    // After drawing, update max scroll:
+    pakkit_scroll_update(&scroll, total_content_height, viewport_height);
+
+- Smooth ease-out animation (configurable via `PAKKIT_SCROLL_SMOOTH_FACTOR`)
+- Scroll step size configurable via `PAKKIT_SCROLL_STEP` (default 20)
+- Used internally by `pakkit_detail_screen`
+
+### pakkit_loading
+
+Centered loading message screen.
+
+    pakkit_loading("Fetching data...");
+
+### pakkit_progress
+
+Progress bar with message.
+
+    pakkit_progress("Downloading...", 3, 10);  // 3 of 10
+
+### pakkit_draw_toggle
+
+Toggle switch drawing primitive. Returns the drawn width.
+
+    pakkit_draw_toggle(x, y, is_on);
+
+### pakkit_draw_tabs
+
+Tab bar drawing primitive. Returns the drawn height.
+
+    pakkit_tab tabs[] = {
+        {.label = "Tab 1" },
+        {.label = "Tab 2" },
+    };
+    pakkit_draw_tabs(tabs, 2, active_index);
+
 ### pakkit_keyboard
 
 On-screen QWERTY keyboard with optional shortcut buttons.

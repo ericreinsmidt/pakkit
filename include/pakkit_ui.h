@@ -26,6 +26,10 @@
 #define PAKKIT_SCROLL_STEP 20
 #endif
 
+#ifndef PAKKIT_SCROLL_SMOOTH_FACTOR
+#define PAKKIT_SCROLL_SMOOTH_FACTOR 0.25f
+#endif
+
 /* -----------------------------------------------------------------------
  * Hint bar (minimal footer replacement)
  * ----------------------------------------------------------------------- */
@@ -159,10 +163,13 @@ void pakkit_detail_screen(pakkit_detail_opts *opts);
 
 typedef struct {
     int scroll_y;
+    int target_scroll_y;
+    float scroll_y_f;
     int last_max_scroll;
 } pakkit_scroll_state;
 
 void pakkit_scroll_handle_input(pakkit_scroll_state *s, int direction, int step);
+void pakkit_scroll_animate(pakkit_scroll_state *s);
 void pakkit_scroll_update(pakkit_scroll_state *s, int content_height, int viewport_height);
 
 /* -----------------------------------------------------------------------
@@ -726,15 +733,27 @@ int pakkit_confirm(const char *message, const char *confirm_label,
 /* --- Scroll helper --- */
 
 void pakkit_scroll_handle_input(pakkit_scroll_state *s, int direction, int step) {
-    s->scroll_y += direction * step;
-    if (s->scroll_y < 0) s->scroll_y = 0;
-    if (s->scroll_y > s->last_max_scroll) s->scroll_y = s->last_max_scroll;
+    s->target_scroll_y += direction * step;
+    if (s->target_scroll_y < 0) s->target_scroll_y = 0;
+    if (s->target_scroll_y > s->last_max_scroll) s->target_scroll_y = s->last_max_scroll;
+}
+
+void pakkit_scroll_animate(pakkit_scroll_state *s) {
+    float diff = s->target_scroll_y - s->scroll_y_f;
+    if (diff > -0.5f && diff < 0.5f) {
+        s->scroll_y_f = s->target_scroll_y;
+    } else {
+        s->scroll_y_f += diff * PAKKIT_SCROLL_SMOOTH_FACTOR;
+    }
+    s->scroll_y = (int)(s->scroll_y_f + 0.5f);
 }
 
 void pakkit_scroll_update(pakkit_scroll_state *s, int content_height, int viewport_height) {
     int max_scroll = content_height - viewport_height;
     if (max_scroll < 0) max_scroll = 0;
     s->last_max_scroll = max_scroll;
+    if (s->target_scroll_y > s->last_max_scroll) s->target_scroll_y = s->last_max_scroll;
+    if (s->scroll_y_f > s->last_max_scroll) s->scroll_y_f = s->last_max_scroll;
     if (s->scroll_y > s->last_max_scroll) s->scroll_y = s->last_max_scroll;
 }
 
@@ -763,6 +782,8 @@ void pakkit_detail_screen(pakkit_detail_opts *opts) {
                 }
             }
         }
+
+        pakkit_scroll_animate(&scroll);
 
         ap_clear_screen();
         ap_draw_background();
