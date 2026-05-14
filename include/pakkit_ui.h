@@ -23,11 +23,11 @@
 #endif
 
 #ifndef PAKKIT_SCROLL_STEP
-#define PAKKIT_SCROLL_STEP 20
+#define PAKKIT_SCROLL_STEP 85
 #endif
 
 #ifndef PAKKIT_SCROLL_SMOOTH_FACTOR
-#define PAKKIT_SCROLL_SMOOTH_FACTOR 0.25f
+#define PAKKIT_SCROLL_SMOOTH_FACTOR 0.15f
 #endif
 
 /* -----------------------------------------------------------------------
@@ -164,7 +164,6 @@ void pakkit_detail_screen(pakkit_detail_opts *opts);
 typedef struct {
     int scroll_y;
     int target_scroll_y;
-    float scroll_y_f;
     int last_max_scroll;
 } pakkit_scroll_state;
 
@@ -739,13 +738,12 @@ void pakkit_scroll_handle_input(pakkit_scroll_state *s, int direction, int step)
 }
 
 void pakkit_scroll_animate(pakkit_scroll_state *s) {
-    float diff = s->target_scroll_y - s->scroll_y_f;
-    if (diff > -0.5f && diff < 0.5f) {
-        s->scroll_y_f = s->target_scroll_y;
-    } else {
-        s->scroll_y_f += diff * PAKKIT_SCROLL_SMOOTH_FACTOR;
-    }
-    s->scroll_y = (int)(s->scroll_y_f + 0.5f);
+    int diff = s->target_scroll_y - s->scroll_y;
+    if (diff == 0) return;
+    int step = (int)((float)diff * PAKKIT_SCROLL_SMOOTH_FACTOR);
+    if (step == 0) step = (diff > 0) ? 1 : -1;
+    s->scroll_y += step;
+    if (s->scroll_y != s->target_scroll_y) ap_request_frame();
 }
 
 void pakkit_scroll_update(pakkit_scroll_state *s, int content_height, int viewport_height) {
@@ -753,7 +751,6 @@ void pakkit_scroll_update(pakkit_scroll_state *s, int content_height, int viewpo
     if (max_scroll < 0) max_scroll = 0;
     s->last_max_scroll = max_scroll;
     if (s->target_scroll_y > s->last_max_scroll) s->target_scroll_y = s->last_max_scroll;
-    if (s->scroll_y_f > s->last_max_scroll) s->scroll_y_f = s->last_max_scroll;
     if (s->scroll_y > s->last_max_scroll) s->scroll_y = s->last_max_scroll;
 }
 
