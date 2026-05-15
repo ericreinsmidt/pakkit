@@ -114,6 +114,7 @@ typedef enum {
     PAKKIT_ACTION_BACK,
     PAKKIT_ACTION_SECONDARY,
     PAKKIT_ACTION_TERTIARY,
+    PAKKIT_ACTION_QUATERNARY,
 } pakkit_action;
 
 typedef struct {
@@ -128,6 +129,7 @@ typedef struct {
     int              hint_count;
     ap_button        secondary_button;   /* AP_BTN_NONE to disable */
     ap_button        tertiary_button;    /* AP_BTN_NONE to disable */
+    ap_button        quaternary_button;  /* AP_BTN_NONE to disable */
     int              initial_index;      /* starting cursor position */
 } pakkit_list_opts;
 
@@ -551,6 +553,12 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
                             result->action = PAKKIT_ACTION_TERTIARY;
                             running = 0;
                         }
+                        if (!ev.repeated && opts->quaternary_button != AP_BTN_NONE
+                            && ev.button == opts->quaternary_button) {
+                            result->selected_index = cursor;
+                            result->action = PAKKIT_ACTION_QUATERNARY;
+                            running = 0;
+                        }
                         break;
                 }
             }
@@ -565,8 +573,11 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
         TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
 
         int has_thumbnails = 0;
+        int has_sublabels = 0;
         for (int i = 0; i < count; i++) {
-            if (items[i].thumbnail) { has_thumbnails = 1; break; }
+            if (items[i].thumbnail) has_thumbnails = 1;
+            if (items[i].sublabel)  has_sublabels = 1;
+            if (has_thumbnails && has_sublabels) break;
         }
 
         int line_h = TTF_FontHeight(font_small);
@@ -574,9 +585,13 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
         int two_line_h = line_h + tiny_h + pad;
         int thumb_size = has_thumbnails ? AP_DS(42) : 0;
         int thumb_pad  = has_thumbnails ? pad * 2 : 0;
-        int content_h  = has_thumbnails
-            ? (thumb_size > two_line_h ? thumb_size : two_line_h)
-            : line_h;
+        int content_h;
+        if (has_thumbnails)
+            content_h = thumb_size > two_line_h ? thumb_size : two_line_h;
+        else if (has_sublabels)
+            content_h = two_line_h;
+        else
+            content_h = line_h;
         int item_h = content_h + pad * 2;
         int title_h = TTF_FontHeight(font_med) + pad * 3 + 1 + pad * 3;
         int hint_h = TTF_FontHeight(font_tiny) + pad * 2;
