@@ -117,7 +117,9 @@ typedef enum {
 } pakkit_action;
 
 typedef struct {
-    const char *label;
+    const char  *label;
+    const char  *sublabel;      /* optional second line of text */
+    SDL_Texture *thumbnail;     /* optional thumbnail, NULL = text only */
 } pakkit_list_item;
 
 typedef struct {
@@ -562,7 +564,20 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
         TTF_Font *font_small = ap_get_font(AP_FONT_SMALL);
         TTF_Font *font_tiny  = ap_get_font(AP_FONT_TINY);
 
-        int item_h = TTF_FontHeight(font_small) + pad * 3;
+        int has_thumbnails = 0;
+        for (int i = 0; i < count; i++) {
+            if (items[i].thumbnail) { has_thumbnails = 1; break; }
+        }
+
+        int line_h = TTF_FontHeight(font_small);
+        int tiny_h = TTF_FontHeight(font_tiny);
+        int two_line_h = line_h + tiny_h + pad;
+        int thumb_size = has_thumbnails ? AP_DS(42) : 0;
+        int thumb_pad  = has_thumbnails ? pad * 2 : 0;
+        int content_h  = has_thumbnails
+            ? (thumb_size > two_line_h ? thumb_size : two_line_h)
+            : line_h;
+        int item_h = content_h + pad * 2;
         int title_h = TTF_FontHeight(font_med) + pad * 3 + 1 + pad * 3;
         int hint_h = TTF_FontHeight(font_tiny) + pad * 2;
         int list_area_h = sh - title_h - hint_h - pad;
@@ -596,15 +611,36 @@ int pakkit_list(pakkit_list_opts *opts, pakkit_list_item *items, int count,
 
         for (int i = scroll; i < count && i < scroll + visible; i++) {
             int item_y = list_top + (i - scroll) * item_h;
-            int text_y = item_y + (item_h - TTF_FontHeight(font_small)) / 2;
+            int is_sel = (i == cursor);
+            ap_color fg = is_sel ? hl_text : text_color;
 
-            if (i == cursor) {
+            if (is_sel)
                 ap_draw_pill(pad * 2, item_y, sw - pad * 4, item_h, highlight);
+
+            int text_x = pad * 4;
+            int text_max_w = sw - pad * 8;
+
+            if (items[i].thumbnail) {
+                int tx = pad * 3;
+                int ty = item_y + (item_h - thumb_size) / 2;
+                ap_draw_image(items[i].thumbnail, tx, ty, thumb_size, thumb_size);
+                text_x = pad * 3 + thumb_size + thumb_pad;
+                text_max_w = sw - text_x - pad * 4;
+            }
+
+            if (items[i].sublabel) {
+                int block_h = line_h + tiny_h + pad;
+                int label_y = item_y + (item_h - block_h) / 2;
+                int sub_y   = label_y + line_h + pad;
                 ap_draw_text_ellipsized(font_small, items[i].label,
-                                        pad * 4, text_y, hl_text, sw - pad * 8);
+                                        text_x, label_y, fg, text_max_w);
+                ap_color sub_fg = is_sel ? hl_text : hint_color;
+                ap_draw_text_ellipsized(font_tiny, items[i].sublabel,
+                                        text_x, sub_y, sub_fg, text_max_w);
             } else {
+                int text_y = item_y + (item_h - line_h) / 2;
                 ap_draw_text_ellipsized(font_small, items[i].label,
-                                        pad * 4, text_y, text_color, sw - pad * 8);
+                                        text_x, text_y, fg, text_max_w);
             }
         }
 
