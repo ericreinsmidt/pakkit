@@ -777,7 +777,7 @@ int pakkit_confirm(const char *message, const char *confirm_label,
         ap_present();
     }
 
-    return confirmed;
+    return confirmed ? AP_OK : AP_CANCELLED;
 }
 
 /* --- Scroll helper --- */
